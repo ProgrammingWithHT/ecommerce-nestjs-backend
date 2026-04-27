@@ -1,12 +1,15 @@
 import {
+  IsArray,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ImageDto } from './image.dto';
 
 export class CreateProductDto {
   @IsString()
@@ -47,4 +50,10 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   numOfReviews?: number;
+
+  // @IsOptional()
+  // @IsArray()
+  // @ValidateNested({each: true})
+  // @Type(() => ImageDto)
+  // images: ImageDto[]
 }
