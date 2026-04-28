@@ -12,12 +12,17 @@ export class OrderService {
     ) { }
 
     async create(createOrderDto: CreateOrderDto, userId: string) {
-        
-        const createOrder = await this.orderRepository.create(createOrderDto, userId);
-        return {
-            success: true,
-            createOrder
+
+        try{
+            const createOrder = await this.orderRepository.create(createOrderDto, userId);
+            return {
+                success: true,
+                createOrder
+            }
+        }catch(error){
+            throw new BadRequestException('Failed to create order')
         }
+        
     }
 
     async findOne(id: string) {
@@ -50,21 +55,24 @@ export class OrderService {
             throw new BadRequestException('Already delivered');
         }
 
-        if (dto.status === 'Shipped') {
-            console.log('hi')
-            for (const item of order.orderItems) {
-                // console.log('hi1')
-                await this.updateStock(item.product, item.quantity);
+        try{
+            if (dto.status === 'Shipped') {
+                for (const item of order.orderItems) {
+                    await this.updateStock(item.product, item.quantity);
+                }
             }
+    
+            order.orderStatus = dto.status;
+    
+            if (dto.status === 'Delivered') {
+                order.deliveredAt = new Date();
+            }
+    
+            return await order.save();
+        }catch(error){
+            throw new BadRequestException('Failed to update order');
         }
 
-        order.orderStatus = dto.status;
-
-        if (dto.status === 'Delivered') {
-            order.deliveredAt = new Date();
-        }
-
-        return order.save();
     }
 
     async delete(id: string) {
@@ -72,11 +80,19 @@ export class OrderService {
 
         if (!order) throw new NotFoundException('Order not found');
 
-        return await order.deleteOne();
+        try{
+            return await order.deleteOne();
+        }catch(error){
+            throw new BadRequestException('Failed to delete order')
+        }
+
     }
 
     async updateStock(productId: string, quantity: number) {
-        console.log('running updatestock')
-        await this.productService.decreaseStock(productId, quantity);
-    } 
+        try{
+            await this.productService.decreaseStock(productId, quantity);
+        }catch(error){
+            throw new BadRequestException(`Stock update failed for product ${productId}`)
+        }
+    }
 }

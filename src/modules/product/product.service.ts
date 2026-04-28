@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -52,18 +53,22 @@ export class ProductService {
     files: Express.Multer.File[] = [],
     userId: string,
   ) {
-    const images = await this.uploadImages(files);
-    const product = await this.productRepository.createProduct({
-      ...createProductDto,
-      user: userId,
-      images,
-    });
+    try {
+      const images = await this.uploadImages(files);
+      const product = await this.productRepository.createProduct({
+        ...createProductDto,
+        user: userId,
+        images,
+      });
 
-    return {
-      success: true,
-      message: 'Product created successfully',
-      product,
-    };
+      return {
+        success: true,
+        message: 'Product created successfully',
+        product,
+      };
+    } catch (error) {
+      throw new BadRequestException('Failed to create product')
+    }
   }
 
   async updateProduct(
@@ -71,44 +76,59 @@ export class ProductService {
     updateProductDto: UpdateProductDto,
     files: Express.Multer.File[] = [],
   ) {
-    const existingProduct = await this.findExistingProduct(productId);
-    const images = files.length
-      ? await this.uploadImages(files)
-      : existingProduct.images;
+    try {
+      const existingProduct = await this.findExistingProduct(productId);
+      const images = files.length
+        ? await this.uploadImages(files)
+        : existingProduct.images;
 
-    const product = await this.productRepository.updateProduct(productId, {
-      ...updateProductDto,
-      images,
-    });
+      const product = await this.productRepository.updateProduct(productId, {
+        ...updateProductDto,
+        images,
+      });
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
+      if (!product) {
+        throw new NotFoundException('Product not found');
+      }
+
+      return {
+        success: true,
+        message: 'Product updated successfully', 
+        product,
+      };
+    } catch (error) {
+      // console.error(error);
+      // throw new BadRequestException(error.message || 'Something went wrong')
+      throw new BadRequestException('Failed to update product')
     }
-
-    return {
-      success: true,
-      message: 'Product updated successfully',
-      product,
-    };
   }
 
   async deleteProduct(productId: string) {
-    const product = await this.productRepository.deleteProduct(productId);
+    try {
+      const product = await this.productRepository.deleteProduct(productId);
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
+      if (!product) {
+        throw new NotFoundException('Product not found');
+      }
 
-    return {
-      success: true,
-      message: 'Product deleted successfully',
-    };
+      return {
+        success: true,
+        message: 'Product deleted successfully',
+      };
+    } catch (error) { throw new BadRequestException('Failed to delete product') }
   }
 
   async createProductReview(
     createProductReviewDto: CreateProductReviewDto,
     user: { id: string; name: string },
   ) {
+
+    try{
+
+    if (createProductReviewDto.rating < 0 || createProductReviewDto.rating > 5) {
+      throw new BadRequestException('Rating must be between 0 and 5');
+    }
+
     const product = await this.findExistingProduct(createProductReviewDto.productId);
     const existingReview = product.reviews.find(
       (review) => review.user.toString() === user.id,
@@ -135,6 +155,10 @@ export class ProductService {
       success: true,
       message: 'Review saved successfully',
     };
+
+  }catch(error){ throw new BadRequestException('Failed to save review')}
+
+
   }
 
   async getProductReviews(productId: string) {
@@ -182,25 +206,34 @@ export class ProductService {
 
   async decreaseStock(productId: string, quantity: number) {
     // console.log("runnig decrease stock")
+
+    try{
     const product = await this.productRepository.decreaseStock(productId);
 
     if (!product) throw new NotFoundException('Product not found');
 
+    if (product.stock < quantity) {
+    throw new BadRequestException('Insufficient stock');
+  }
+
     product.stock -= quantity;
 
     await product.save();
+}catch(error) {throw new BadRequestException('Failed to update stock')}
   }
 
   private async uploadImages(files: Express.Multer.File[]) {
     const images: Array<{ public_id: string; url: string }> = [];
 
     for (const file of files) {
+      try{
       const result = await this.cloudinaryService.uploadImage(file, 'products');
 
       images.push({
         public_id: result.public_id,
         url: result.secure_url,
       });
+    }catch(error){ throw new BadRequestException('Image upload failed')}
     }
 
     return images;

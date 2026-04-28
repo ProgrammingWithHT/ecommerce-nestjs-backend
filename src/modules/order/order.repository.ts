@@ -41,7 +41,5 @@ export class OrderRepository {
     delete(id: string){
         return this.orderModel.findById(id);
     }
-    
-
 
 }

@@ -44,7 +44,7 @@ export class UserService {
     private readonly userRepository: UserRepository,
     private readonly jwtService: JwtService,
     private readonly cloudinaryService: CloudinaryService,
-  ) {}
+  ) { }
 
   async register(
     registerUserDto: RegisterUserDto,
@@ -83,13 +83,18 @@ export class UserService {
   }
 
   async login(loginUserDto: LoginUserDto): Promise<AuthResponse> {
-    const user = await this.userRepository.findWithPassword(loginUserDto.email);
 
-    if (!user || !(await user.comparePassword(loginUserDto.password))) {
-      throw new UnauthorizedException('Invalid email or password');
+    try{
+      const user = await this.userRepository.findWithPassword(loginUserDto.email);
+  
+      if (!user || !(await user.comparePassword(loginUserDto.password))) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
+  
+      return this.buildAuthResponse(user);
+    }catch(error){
+      throw new UnauthorizedException('Login Failed')
     }
-
-    return this.buildAuthResponse(user);
   }
 
   logout() {
@@ -102,11 +107,11 @@ export class UserService {
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
     const user = await this.userRepository.findByEmail(forgotPasswordDto.email);
     const response: { success: boolean; message: string; resetToken?: string } =
-      {
-        success: true,
-        message:
-          'If that email exists, password reset instructions are ready to send.',
-      };
+    {
+      success: true,
+      message:
+        'If that email exists, password reset instructions are ready to send.',
+    };
 
     if (!user) {
       return response;
@@ -123,27 +128,31 @@ export class UserService {
   }
 
   async resetPassword(token: string, resetPasswordDto: ResetPasswordDto) {
-    this.ensurePasswordsMatch(
-      resetPasswordDto.password,
-      resetPasswordDto.confirmPassword,
-    );
-
-    const resetPasswordToken = createHash('sha256').update(token).digest('hex');
-    const user =
-      await this.userRepository.findByResetPasswordToken(resetPasswordToken);
-
-    if (!user) {
-      throw new BadRequestException(
-        'Password reset token is invalid or expired',
+    try {
+      this.ensurePasswordsMatch(
+        resetPasswordDto.password,
+        resetPasswordDto.confirmPassword,
       );
+
+      const resetPasswordToken = createHash('sha256').update(token).digest('hex');
+      const user =
+        await this.userRepository.findByResetPasswordToken(resetPasswordToken);
+
+      if (!user) {
+        throw new BadRequestException(
+          'Password reset token is invalid or expired',
+        );
+      }
+
+      user.password = resetPasswordDto.password;
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save();
+
+      return this.buildAuthResponse(user);
+    } catch (error) {
+      throw new BadRequestException('Failed to reset password');
     }
-
-    user.password = resetPasswordDto.password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-    await user.save();
-
-    return this.buildAuthResponse(user);
   }
 
   async getUserDetails(userId: string) {
@@ -156,6 +165,8 @@ export class UserService {
   }
 
   async updatePassword(userId: string, updatePasswordDto: UpdatePasswordDto) {
+
+    try{
     this.ensurePasswordsMatch(
       updatePasswordDto.newPassword,
       updatePasswordDto.confirmPassword,
@@ -179,6 +190,9 @@ export class UserService {
     await user.save();
 
     return this.buildAuthResponse(user);
+  }catch(error){
+    throw new BadRequestException('Failed to update password')
+  }
   }
 
   async updateProfile(
@@ -343,12 +357,16 @@ export class UserService {
   }
 
   private async uploadAvatar(file: Express.Multer.File): Promise<StoredAvatar> {
-    const result = await this.cloudinaryService.uploadImage(file, 'users/avatars');
+    try {
+      const result = await this.cloudinaryService.uploadImage(file, 'users/avatars');
 
-    return {
-      public_id: result.public_id,
-      url: result.secure_url,
-    };
+      return {
+        public_id: result.public_id,
+        url: result.secure_url,
+      };
+    } catch (error) {
+      throw new BadRequestException('Avatar upload failed');
+    }
   }
 
   private async deleteAvatarIfNeeded(publicId?: string) {
