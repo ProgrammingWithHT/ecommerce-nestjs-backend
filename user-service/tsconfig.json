@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../dist/user-service",
+    "tsBuildInfoFile": "../dist/user-service.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "../shared/**/*.ts"],
+  "exclude": ["../node_modules", "../dist"]
+}

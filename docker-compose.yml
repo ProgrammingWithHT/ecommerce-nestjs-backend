@@ -1,0 +1,146 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: ecommerce-mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - ecommerce-network
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      NODE_ENV: production 
+      TCP_HOST: 0.0.0.0 
+      TCP_PORT: 4001 
+      MONGO_URI: mongodb://mongodb:27017/user_service_db 
+      JWT_SECRET: change-me-in-production 
+      JWT_EXPIRES_IN: 1d 
+      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-} 
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-} 
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    ports:
+      - '4001:4001'
+    networks:
+      - ecommerce-network
+    develop:
+      watch:
+        - path: ./user-service/src
+          target: /app/src
+          action: sync
+        - path: ./user-service/package.json
+          action: rebuild
+        - path: ./user-service/package-lock.json
+          action: rebuild
+
+  product-service:
+    build:
+      context: .
+      dockerfile: product-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - user-service
+    environment:
+      NODE_ENV: production 
+      TCP_HOST: 0.0.0.0 
+      TCP_PORT: 4002 
+      MONGO_URI: mongodb://mongodb:27017/product_service_db 
+      JWT_SECRET: change-me-in-production 
+      AUTH_CACHE_TTL_MS: 300000 
+      USER_SERVICE_HOST: user-service 
+      USER_SERVICE_PORT: 4001 
+      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-} 
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-} 
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    ports:
+      - '4002:4002'
+    networks:
+      - ecommerce-network
+    develop:
+      watch:
+        - path: ./product-service/src
+          target: /app/src
+          action: sync
+        - path: ./product-service/package.json
+          action: rebuild
+        - path: ./product-service/package-lock.json
+          action: rebuild
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - user-service
+      - product-service
+    environment:
+      NODE_ENV: production 
+      TCP_HOST: 0.0.0.0 
+      TCP_PORT: 4003 
+      MONGO_URI: mongodb://mongodb:27017/order_service_db 
+      JWT_SECRET: change-me-in-production 
+      AUTH_CACHE_TTL_MS: 300000 
+      USER_SERVICE_HOST: user-service 
+      USER_SERVICE_PORT: 4001 
+      PRODUCT_SERVICE_HOST: product-service 
+      PRODUCT_SERVICE_PORT: 4002
+    ports:
+      - '4003:4003'
+    networks:
+      - ecommerce-network
+    develop:
+      watch:
+        - path: ./order-service/src
+          target: /app/src
+          action: sync
+        - path: ./order-service/package.json
+          action: rebuild
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+    environment:
+      NODE_ENV: production 
+      PORT: 3000 
+      USER_SERVICE_HOST: user-service 
+      USER_SERVICE_PORT: 4001 
+      PRODUCT_SERVICE_HOST: product-service 
+      PRODUCT_SERVICE_PORT: 4002 
+      ORDER_SERVICE_HOST: order-service 
+      ORDER_SERVICE_PORT: 4003
+    ports:
+      - '3000:3000'
+    networks:
+      - ecommerce-network
+    develop:
+      watch:
+        - path: ./api-gateway/src
+          target: /app/src
+          action: sync
+        - path: ./api-gateway/package.json
+          action: rebuild
+
+networks:
+  ecommerce-network:
+    name: ecommerce-network
+
+volumes:
+  mongodb_data:
+    name: ecommerce-mongodb-volume
