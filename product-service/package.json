@@ -1,0 +1,30 @@
+{
+  "name": "@ecommerce/product-service",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/product-service/src/main.js",
+    "start:dev": "ts-node -P tsconfig.json src/main.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/microservices": "^11.0.1",
+    "@nestjs/mongoose": "^11.0.4",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "cloudinary": "^1.41.3",
+    "mongoose": "^9.4.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}

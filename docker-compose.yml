@@ -34,11 +34,9 @@ services:
     develop:
       watch:
         - path: ./user-service/src
-          target: /app/src
+          target: /app/user-service/src
           action: sync
         - path: ./user-service/package.json
-          action: rebuild
-        - path: ./user-service/package-lock.json
           action: rebuild
 
   product-service:
@@ -68,11 +66,9 @@ services:
     develop:
       watch:
         - path: ./product-service/src
-          target: /app/src
+          target: /app/product-service/src
           action: sync
         - path: ./product-service/package.json
-          action: rebuild
-        - path: ./product-service/package-lock.json
           action: rebuild
 
   order-service:
@@ -102,7 +98,7 @@ services:
     develop:
       watch:
         - path: ./order-service/src
-          target: /app/src
+          target: /app/order-service/src
           action: sync
         - path: ./order-service/package.json
           action: rebuild
@@ -132,7 +128,7 @@ services:
     develop:
       watch:
         - path: ./api-gateway/src
-          target: /app/src
+          target: /app/api-gateway/src
           action: sync
         - path: ./api-gateway/package.json
           action: rebuild
