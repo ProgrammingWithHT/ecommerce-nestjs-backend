@@ -1,9 +1,18 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "outDir": "../dist/api-gateway",
-    "tsBuildInfoFile": "../dist/api-gateway.tsbuildinfo"
+    "baseUrl": ".",
+    "paths": {
+      "@nestjs/*": ["./node_modules/@nestjs/*"],
+      "class-transformer": ["./node_modules/class-transformer"],
+      "class-validator": ["./node_modules/class-validator"],
+      "reflect-metadata": ["./node_modules/reflect-metadata"],
+      "rxjs": ["./node_modules/rxjs"]
+    },
+    "rootDir": "..",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
-  "include": ["src/**/*.ts", "../shared/**/*.ts"],
-  "exclude": ["../node_modules", "../dist"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

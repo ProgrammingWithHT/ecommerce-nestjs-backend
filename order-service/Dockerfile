@@ -2,23 +2,29 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
-
 COPY tsconfig.json ./
 COPY shared ./shared
+COPY order-service/package*.json ./order-service/
+
+WORKDIR /app/order-service
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+WORKDIR /app
 COPY order-service ./order-service
 
-RUN npm run build:order-service
+WORKDIR /app/order-service
+RUN npm run build
 
 FROM node:20-alpine
 
-WORKDIR /app
 ENV NODE_ENV=production
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+WORKDIR /app
+COPY order-service/package*.json ./order-service/
 
-COPY --from=builder /app/dist ./dist
+WORKDIR /app/order-service
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-CMD ["node", "dist/order-service/order-service/src/main.js"]
+COPY --from=builder /app/order-service/dist ./dist
+
+CMD ["node", "dist/order-service/src/main.js"]
