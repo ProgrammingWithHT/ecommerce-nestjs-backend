@@ -2,29 +2,23 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+COPY package*.json ./
+RUN npm ci
+
 COPY tsconfig.json ./
 COPY shared ./shared
-COPY api-gateway/package*.json ./api-gateway/
-
-WORKDIR /app/api-gateway
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-
-WORKDIR /app
 COPY api-gateway ./api-gateway
 
-WORKDIR /app/api-gateway
-RUN npm run build
+RUN npm run build:api-gateway
 
 FROM node:20-alpine
 
+WORKDIR /app
 ENV NODE_ENV=production
 
-WORKDIR /app
-COPY api-gateway/package*.json ./api-gateway/
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-WORKDIR /app/api-gateway
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+COPY --from=builder /app/dist ./dist
 
-COPY --from=builder /app/api-gateway/dist ./dist
-
-CMD ["node", "dist/api-gateway/src/main.js"]
+CMD ["node", "dist/api-gateway/api-gateway/src/main.js"]

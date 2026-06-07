@@ -50,33 +50,3 @@ docker compose up --build
 ```
 
 Gateway routes traffic to the TCP services but does not verify JWTs. Protected requests pass the bearer token through to the owning service, which validates the token locally and confirms the subject with `user-service`.
-
-## Push Images To A Docker Repository
-
-Each service in `docker-compose.yml` now has an `image:` name, so you can build and push them directly with Docker Compose.
-
-1. Copy `.env.docker.example` to `.env` and replace `DOCKER_REPO` with your Docker Hub username or registry namespace.
-2. Sign in to your registry:
-
-```bash
-docker login
-```
-
-3. Build the images:
-
-```bash
-docker compose build
-```
-
-4. Push the images:
-
-```bash
-docker compose push
-```
-
-Example image names:
-
-- `your-dockerhub-username/ecommerce-user-service:latest`
-- `your-dockerhub-username/ecommerce-product-service:latest`
-- `your-dockerhub-username/ecommerce-order-service:latest`
-- `your-dockerhub-username/ecommerce-api-gateway:latest`
