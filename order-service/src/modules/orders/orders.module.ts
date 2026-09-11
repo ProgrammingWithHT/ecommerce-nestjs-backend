@@ -5,7 +5,7 @@ import { AuthCacheService } from '../../../../shared/auth/auth-cache.service';
 import { JwtTokenModule } from '../../../../shared/auth/jwt-token.module';
 import { RemoteAuthService } from '../../../../shared/auth/remote-auth.service';
 import { RpcAuthGuard } from '../../../../shared/auth/rpc-auth.guard';
-import { buildTcpClientRegistration } from '../../../../shared/microservices/tcp.factory';
+import { buildRmqClientRegistration } from '../../../../shared/microservices/rmq.factory';
 import {
   PRODUCT_SERVICE_CLIENT,
   USER_SERVICE_CLIENT,
@@ -21,15 +21,15 @@ import { OrdersService } from './orders.service';
   imports: [
     JwtTokenModule.register(),
     ClientsModule.registerAsync([
-      buildTcpClientRegistration(
+      buildRmqClientRegistration(
         USER_SERVICE_CLIENT,
-        'USER_SERVICE_HOST',
-        'USER_SERVICE_PORT',
+        'USER_SERVICE_QUEUE',
+        'user_queue',
       ),
-      buildTcpClientRegistration(
+      buildRmqClientRegistration(
         PRODUCT_SERVICE_CLIENT,
-        'PRODUCT_SERVICE_HOST',
-        'PRODUCT_SERVICE_PORT',
+        'PRODUCT_SERVICE_QUEUE',
+        'product_queue',
       ),
     ]),
     MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }]),

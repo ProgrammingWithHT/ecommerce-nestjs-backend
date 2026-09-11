@@ -10,6 +10,16 @@ services:
     networks:
       - ecommerce-network
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: ecommerce-rabbitmq
+    restart: unless-stopped
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    networks:
+      - ecommerce-network
+
   user-service:
     build:
       context: .
@@ -17,18 +27,17 @@ services:
     restart: unless-stopped
     depends_on:
       - mongodb
+      - rabbitmq
     environment:
-      NODE_ENV: production 
-      TCP_HOST: 0.0.0.0 
-      TCP_PORT: 4001 
-      MONGO_URI: mongodb://mongodb:27017/user_service_db 
-      JWT_SECRET: change-me-in-production 
-      JWT_EXPIRES_IN: 1d 
-      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-} 
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-} 
+      NODE_ENV: production
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USER_SERVICE_QUEUE: user_queue
+      MONGO_URI: mongodb://mongodb:27017/user_service_db
+      JWT_SECRET: change-me-in-production
+      JWT_EXPIRES_IN: 1d
+      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
-    ports:
-      - '4001:4001'
     networks:
       - ecommerce-network
     develop:
@@ -46,21 +55,19 @@ services:
     restart: unless-stopped
     depends_on:
       - mongodb
+      - rabbitmq
       - user-service
     environment:
-      NODE_ENV: production 
-      TCP_HOST: 0.0.0.0 
-      TCP_PORT: 4002 
-      MONGO_URI: mongodb://mongodb:27017/product_service_db 
-      JWT_SECRET: change-me-in-production 
-      AUTH_CACHE_TTL_MS: 300000 
-      USER_SERVICE_HOST: user-service 
-      USER_SERVICE_PORT: 4001 
-      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-} 
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-} 
+      NODE_ENV: production
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      PRODUCT_SERVICE_QUEUE: product_queue
+      USER_SERVICE_QUEUE: user_queue
+      MONGO_URI: mongodb://mongodb:27017/product_service_db
+      JWT_SECRET: change-me-in-production
+      AUTH_CACHE_TTL_MS: 300000
+      CLOUDINARY_NAME: ${CLOUDINARY_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
-    ports:
-      - '4002:4002'
     networks:
       - ecommerce-network
     develop:
@@ -78,21 +85,18 @@ services:
     restart: unless-stopped
     depends_on:
       - mongodb
+      - rabbitmq
       - user-service
       - product-service
     environment:
-      NODE_ENV: production 
-      TCP_HOST: 0.0.0.0 
-      TCP_PORT: 4003 
-      MONGO_URI: mongodb://mongodb:27017/order_service_db 
-      JWT_SECRET: change-me-in-production 
-      AUTH_CACHE_TTL_MS: 300000 
-      USER_SERVICE_HOST: user-service 
-      USER_SERVICE_PORT: 4001 
-      PRODUCT_SERVICE_HOST: product-service 
-      PRODUCT_SERVICE_PORT: 4002
-    ports:
-      - '4003:4003'
+      NODE_ENV: production
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      ORDER_SERVICE_QUEUE: order_queue
+      USER_SERVICE_QUEUE: user_queue
+      PRODUCT_SERVICE_QUEUE: product_queue
+      MONGO_URI: mongodb://mongodb:27017/order_service_db
+      JWT_SECRET: change-me-in-production
+      AUTH_CACHE_TTL_MS: 300000
     networks:
       - ecommerce-network
     develop:
@@ -109,18 +113,17 @@ services:
       dockerfile: api-gateway/Dockerfile
     restart: unless-stopped
     depends_on:
+      - rabbitmq
       - user-service
       - product-service
       - order-service
     environment:
-      NODE_ENV: production 
-      PORT: 3000 
-      USER_SERVICE_HOST: user-service 
-      USER_SERVICE_PORT: 4001 
-      PRODUCT_SERVICE_HOST: product-service 
-      PRODUCT_SERVICE_PORT: 4002 
-      ORDER_SERVICE_HOST: order-service 
-      ORDER_SERVICE_PORT: 4003
+      NODE_ENV: production
+      PORT: 3000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      USER_SERVICE_QUEUE: user_queue
+      PRODUCT_SERVICE_QUEUE: product_queue
+      ORDER_SERVICE_QUEUE: order_queue
     ports:
       - '3000:3000'
     networks:

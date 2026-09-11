@@ -6,7 +6,7 @@ import { JwtTokenModule } from '../../../../shared/auth/jwt-token.module';
 import { RemoteAuthService } from '../../../../shared/auth/remote-auth.service';
 import { RpcAuthGuard } from '../../../../shared/auth/rpc-auth.guard';
 import { CloudinaryModule } from '../../../../shared/cloudinary/cloudinary.module';
-import { buildTcpClientRegistration } from '../../../../shared/microservices/tcp.factory';
+import { buildRmqClientRegistration } from '../../../../shared/microservices/rmq.factory';
 import { USER_SERVICE_CLIENT } from '../../../../shared/microservices/service-tokens';
 import { Product, ProductSchema } from './schemas/product.schema';
 import { ProductsMessageController } from './products.message-controller';
@@ -18,10 +18,10 @@ import { ProductsService } from './products.service';
     CloudinaryModule,
     JwtTokenModule.register(),
     ClientsModule.registerAsync([
-      buildTcpClientRegistration(
+      buildRmqClientRegistration(
         USER_SERVICE_CLIENT,
-        'USER_SERVICE_HOST',
-        'USER_SERVICE_PORT',
+        'USER_SERVICE_QUEUE',
+        'user_queue',
       ),
     ]),
     MongooseModule.forFeature([{ name: Product.name, schema: ProductSchema }]),

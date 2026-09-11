@@ -4,18 +4,21 @@ import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { RpcExceptionFilter } from '../../shared/microservices/rpc-exception.filter';
-import { buildTcpMicroserviceOptions } from '../../shared/microservices/tcp.factory';
+import { buildRmqMicroserviceOptions } from '../../shared/microservices/rmq.factory';
 
 async function bootstrap() {
-  
   const app = await NestFactory.createApplicationContext(AppModule);
   const configService = app.get(ConfigService);
-  const tcpOptions = buildTcpMicroserviceOptions(configService);
+  const rmqOptions = buildRmqMicroserviceOptions(
+    configService,
+    'USER_SERVICE_QUEUE',
+    'user_queue',
+  );
   await app.close();
 
   const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(
     AppModule,
-    tcpOptions,
+    rmqOptions,
   );
 
   microservice.useGlobalPipes(

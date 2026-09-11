@@ -1,14 +1,14 @@
-# Ecommerce Microservices
+# Ecommerce Microservices (RabbitMQ Transport)
 
-NestJS microservices version of the original ecommerce backend. The monolith is split into independently deployable TCP services with a lightweight HTTP gateway for routing only.
+NestJS microservices version of the ecommerce backend. All inter-service communication (RPC commands and events) routes through **RabbitMQ** message queues (`user_queue`, `product_queue`, `order_queue`) with a lightweight HTTP gateway for REST routing.
 
 ## Architecture
 
-- `user-service`: issues JWT tokens and validates user identity for other services
-- `product-service`: owns product catalog and stock mutations
-- `order-service`: owns order lifecycle and talks to product-service through an inventory port
-- `api-gateway`: optional HTTP entrypoint that forwards requests over TCP without performing authentication
-- `shared`: common contracts, auth helpers, TCP client factory, Mongo bootstrap, and error mapping
+- `user-service`: issues JWT tokens, manages users, and handles token validation requests via `user_queue`
+- `product-service`: owns product catalog and stock mutations, listens for order events on `product_queue`
+- `order-service`: owns order lifecycle, dispatches inventory event patterns, and routes messages via `order_queue`
+- `api-gateway`: HTTP entrypoint that forwards requests over RabbitMQ queues without performing JWT verification
+- `shared`: common contracts, auth helpers, RMQ client factory, Mongo bootstrap, and error mapping
 
 ## Folder Structure
 
@@ -20,63 +20,34 @@ ecommerce-microservices/
 ├── shared/
 ├── user-service/
 ├── docker-compose.yml
+├── MICROSERVICES.md
 └── package.json
 ```
 
 ## Why This Layout
 
-- Services are loosely coupled by message contracts instead of direct module imports.
-- `order-service` depends on an `InventoryPort`, so the TCP client can later be swapped for Kafka or RabbitMQ without changing order domain code.
-- JWT signing and verification logic lives in `shared`, but each service performs its own token verification locally.
-- `product-service` and `order-service` validate the token subject with `user-service` on first use, then cache the result in memory.
+- Services are loosely coupled by message contracts and RabbitMQ queues instead of direct module imports or raw sockets.
+- JWT signing and verification logic lives in `shared`, but each service performs its own token verification locally with in-memory TTL caching.
+- `product-service` listens asynchronously for `ORDER_CREATED` and `ORDER_CANCELLED` events on `product_queue` to adjust inventory without blocking order creation.
 - Each service owns its MongoDB database and never uses cross-service Mongoose relations.
 
 ## Local Development
 
-1. Install dependencies with `npm install`.
-2. Copy each `*.env.example` file to `.env` inside the matching service directory if you want local env files instead of shell variables.
-3. Start services in separate terminals:
-   - `npm run start:user-service:dev`
-   - `npm run start:product-service:dev`
-   - `npm run start:order-service:dev`
-   - `npm run start:api-gateway:dev`
+1. Ensure RabbitMQ is running (e.g. `docker compose up rabbitmq -d` or a local RabbitMQ instance on port `5672`).
+2. Start services in separate terminals:
+   - `npm run start:dev` inside `user-service`
+   - `npm run start:dev` inside `product-service`
+   - `npm run start:dev` inside `order-service`
+   - `npm run start:dev` inside `api-gateway`
 
 ## Docker
 
-Run everything with:
+Run everything (MongoDB, RabbitMQ Broker, User Service, Product Service, Order Service, API Gateway) with:
 
 ```bash
 docker compose up --build
 ```
 
-Gateway routes traffic to the TCP services but does not verify JWTs. Protected requests pass the bearer token through to the owning service, which validates the token locally and confirms the subject with `user-service`.
+Access the **RabbitMQ Management Console** at `http://localhost:15672` (default credentials: `guest` / `guest`).
 
-## Push Images To A Docker Repository
-
-Each service in `docker-compose.yml` now has an `image:` name, so you can build and push them directly with Docker Compose.
-
-1. Copy `.env.docker.example` to `.env` and replace `DOCKER_REPO` with your Docker Hub username or registry namespace.
-2. Sign in to your registry:
-
-```bash
-docker login
-```
-
-3. Build the images:
-
-```bash
-docker compose build
-```
-
-4. Push the images:
-
-```bash
-docker compose push
-```
-
-Example image names:
-
-- `your-dockerhub-username/ecommerce-user-service:latest`
-- `your-dockerhub-username/ecommerce-product-service:latest`
-- `your-dockerhub-username/ecommerce-order-service:latest`
-- `your-dockerhub-username/ecommerce-api-gateway:latest`
+For complete detailed documentation of message patterns, queues, schemas, and API endpoints, view [`MICROSERVICES.md`](file:///c:/Users/Hamza/Desktop/ecommerce-nestjs-backend/MICROSERVICES.md).

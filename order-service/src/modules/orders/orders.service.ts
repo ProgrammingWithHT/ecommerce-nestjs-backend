@@ -35,19 +35,16 @@ export class OrdersService {
         user: authUser,
       });
 
-      try{
+      try {
         this.client.emit(MESSAGE_PATTERNS.orders.created, {
           items: createOrder.orderItems.map((item) => ({
             productId: item.product,
             quantity: item.quantity,
           })),
         });
-      }catch(err){
-        console.log('error',err)
+      } catch (err) {
+        console.log('error', err)
       }
-
-
-
 
       return {
         success: true,
@@ -88,7 +85,7 @@ export class OrdersService {
     updateOrderStatusDto: UpdateOrderStatusDto,
     accessToken: string | undefined,
   ) {
-            console.log('calling 1')
+    console.log('calling 1')
 
     const order = await this.ordersRepository.update(orderId);
 
