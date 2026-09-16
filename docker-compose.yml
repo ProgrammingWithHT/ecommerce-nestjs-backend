@@ -20,6 +20,16 @@ services:
     networks:
       - ecommerce-network
 
+  redis:
+    image: redis/redis-stack:latest
+    container_name: ecommerce-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379" # Redis server port
+      - "8001:8001" # Built-in RedisInsight 
+    networks:
+      - ecommerce-network
+
   user-service:
     build:
       context: .
@@ -57,12 +67,15 @@ services:
       - mongodb
       - rabbitmq
       - user-service
+      - redis
     environment:
       NODE_ENV: production
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       PRODUCT_SERVICE_QUEUE: product_queue
       USER_SERVICE_QUEUE: user_queue
       MONGO_URI: mongodb://mongodb:27017/product_service_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       JWT_SECRET: change-me-in-production
       AUTH_CACHE_TTL_MS: 300000
       CLOUDINARY_NAME: ${CLOUDINARY_NAME:-}

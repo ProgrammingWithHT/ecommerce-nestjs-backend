@@ -12,9 +12,11 @@ import { Product, ProductSchema } from './schemas/product.schema';
 import { ProductsMessageController } from './products.message-controller';
 import { ProductsRepository } from './products.repository';
 import { ProductsService } from './products.service';
+import { RedisModule } from '../../redis/redis.module';
 
 @Module({
   imports: [
+    RedisModule,
     CloudinaryModule,
     JwtTokenModule.register(),
     ClientsModule.registerAsync([

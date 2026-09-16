@@ -13,22 +13,38 @@ import { SerializedFileDto } from '../../../../shared/contracts/files/serialized
 import { UpdateProductDto } from '../../../../shared/contracts/products/update-product.dto';
 import { ProductDocument } from './schemas/product.schema';
 import { ProductsRepository } from './products.repository';
+import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly productsRepository: ProductsRepository,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly redisService: RedisService,
   ) { }
 
   async getAllProducts() {
-    const products = await this.productsRepository.getAllProducts();
+    const cacheKey = 'products:all';
+    const cached = await this.redisService.get<{
+      success: boolean;
+      count: number;
+      products: any[];
+    }>(cacheKey);
 
-    return {
+    if (cached) {
+      return cached;
+    }
+
+    const products = await this.productsRepository.getAllProducts();
+    const result = {
       success: true,
       count: products.length,
       products,
     };
+
+    await this.redisService.set(cacheKey, result, 60);
+
+    return result;
   }
 
   async getAdminProducts() {
@@ -42,12 +58,25 @@ export class ProductsService {
   }
 
   async getProductDetails(productId: string) {
-    const product = await this.findExistingProduct(productId);
+    const cacheKey = `product:${productId}`;
+    const cached = await this.redisService.get<{
+      success: boolean;
+      product: any;
+    }>(cacheKey);
 
-    return {
+    if (cached) {
+      return cached;
+    }
+
+    const product = await this.findExistingProduct(productId);
+    const result = {
       success: true,
       product,
     };
+
+    await this.redisService.set(cacheKey, result, 300);
+
+    return result;
   }
 
   async createProduct(
@@ -61,6 +90,8 @@ export class ProductsService {
       user: userId,
       images,
     });
+
+    await this.redisService.delete('products:all');
 
     return {
       success: true,
@@ -88,6 +119,8 @@ export class ProductsService {
       throw new NotFoundException('Product not found');
     }
 
+    await this.redisService.delete([`product:${productId}`, 'products:all']);
+
     return {
       success: true,
       message: 'Product updated successfully',
@@ -101,6 +134,8 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+
+    await this.redisService.delete([`product:${productId}`, 'products:all']);
 
     return {
       success: true,
@@ -138,6 +173,8 @@ export class ProductsService {
     product.ratings = this.calculateAverageRating(product);
     await this.productsRepository.save(product);
 
+    await this.redisService.delete([`product:${createProductReviewDto.productId}`, 'products:all']);
+
     return {
       success: true,
       message: 'Review saved successfully',
@@ -171,6 +208,8 @@ export class ProductsService {
 
     await this.productsRepository.save(product);
 
+    await this.redisService.delete([`product:${deleteReviewDto.productId}`, 'products:all']);
+
     return {
       success: true,
       message: 'Review deleted successfully',
@@ -178,13 +217,6 @@ export class ProductsService {
   }
 
   async handleOrderCancelled(data: DecreaseStockDto) {
-    // try {
-    //   await this.increaseStock(data);
-    // } catch (err) {
-    //   console.error('Failed to restore stock', err);
-    // }
-
-
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 2000; // 2 sec
 
@@ -199,7 +231,6 @@ export class ProductsService {
 
         if (attempt === MAX_RETRIES) {
           console.error('FINAL FAILURE: Stock update failed permanently');
-          // later: emit failure event here
           return;
         }
 
@@ -207,7 +238,6 @@ export class ProductsService {
         await new Promise((res) => setTimeout(res, RETRY_DELAY));
       }
     }
-
   }
 
   async increaseStock(decreaseStockDto: DecreaseStockDto) {
@@ -225,6 +255,10 @@ export class ProductsService {
         return this.productsRepository.save(product);
       }),
     );
+
+    const keysToDelete = decreaseStockDto.items.map((item) => `product:${item.productId}`);
+    keysToDelete.push('products:all');
+    await this.redisService.delete(keysToDelete);
 
     return {
       success: true,
@@ -247,7 +281,6 @@ export class ProductsService {
 
         if (attempt === MAX_RETRIES) {
           console.error('FINAL FAILURE: Stock update failed permanently');
-          // later: emit failure event here
           return;
         }
 
@@ -288,6 +321,10 @@ export class ProductsService {
         return this.productsRepository.save(product);
       }),
     );
+
+    const keysToDelete = decreaseStockDto.items.map((item) => `product:${item.productId}`);
+    keysToDelete.push('products:all');
+    await this.redisService.delete(keysToDelete);
 
     return {
       success: true,
