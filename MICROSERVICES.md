@@ -1,12 +1,12 @@
 # Microservices Documentation — NestJS E-Commerce Backend (RabbitMQ Edition)
 
-This repository contains a decoupled, event-driven microservices architecture for an E-Commerce platform built with **NestJS**, **TypeScript**, **RabbitMQ (AMQP)**, **MongoDB (Mongoose)**, **Cloudinary**, and **Docker**.
+This repository contains a decoupled, event-driven microservices architecture for an E-Commerce platform built with **NestJS**, **TypeScript**, **RabbitMQ (AMQP)**, **MongoDB (Mongoose)**, **Redis Stack (ioredis)**, **Cloudinary**, and **Docker**.
 
 ---
 
 ## 1. System Overview & Architecture
 
-The system consists of an **API Gateway** serving as an HTTP REST entry point, three core **RabbitMQ Microservices**, a **RabbitMQ Message Broker**, and a central **Shared Module** containing infrastructure code, message patterns, and contracts.
+The system consists of an **API Gateway** serving as an HTTP REST entry point, three core **RabbitMQ Microservices**, a **RabbitMQ Message Broker**, a **Redis Caching Layer**, and a central **Shared Module** containing infrastructure code, message patterns, and contracts.
 
 ```mermaid
 graph TD
@@ -27,6 +27,11 @@ graph TD
         OrderService -->|RPC auth.validate_token via user_queue| RMQ
     end
 
+    subgraph Caching Layer
+        Redis[(Redis Stack / Port 6379 & 8001)]
+        ProductService -->|Cache-Aside GET/SET/DELETE| Redis
+    end
+
     subgraph Databases
         UserService --> DB1[(MongoDB: user_service_db)]
         ProductService --> DB2[(MongoDB: product_service_db)]
@@ -42,6 +47,8 @@ graph TD
 ### Key Architectural Principles
 - **Database-per-Service**: Each microservice owns its isolated MongoDB database. Services never perform cross-database Mongoose joins or direct cross-service database operations.
 - **RabbitMQ Message Queues**: All inter-service communication (RPC commands and events) flows asynchronously through RabbitMQ message queues (`user_queue`, `product_queue`, `order_queue`).
+- **Redis Cache-Aside Pattern**: Product service uses Redis caching to serve sub-millisecond query responses (`product:{id}` with 300s TTL, `products:all` with 60s TTL). Cache is invalidated on product CRUD operations and RabbitMQ stock update events.
+- **Fail-Open Resiliency**: If Redis is temporarily unavailable, `RedisService` logs the error silently and falls back directly to MongoDB without interrupting HTTP/RPC requests or throwing server errors.
 - **Decoupled Security via Cached Remote Auth**: JWT tokens are passed through the gateway to individual services. `product-service` and `order-service` verify tokens locally and query `user-service` via RabbitMQ (`auth.validate_token`) to confirm user identity. Verified user sessions are cached in-memory with configurable TTL to reduce message broker RPC overhead.
 - **Event-Driven Inventory Adjustment**: `order-service` emits asynchronous RabbitMQ events (`ORDER_CREATED`, `ORDER_CANCELLED`). `product-service` listens to these queue events to dynamically update stock without blocking order processing.
 - **Binary File Payload Serialization**: File uploads (avatars & product images) intercepted at the HTTP Gateway are serialized into base64 payloads to traverse NestJS RabbitMQ transport boundaries seamlessly.
@@ -50,12 +57,13 @@ graph TD
 
 ## 2. Service Topology Matrix
 
-| Service Name | Primary Transport | Queue / Port | Database | Primary Responsibility |
+| Service Name | Primary Transport | Queue / Port | Database / Cache | Primary Responsibility |
 | :--- | :--- | :--- | :--- | :--- |
 | **API Gateway** | HTTP (Express) | Port `3000` | N/A | REST routing, Multipart file handling, RabbitMQ client proxy forwarding, Exception mapping |
 | **RabbitMQ Broker** | AMQP | Ports `5672` / `15672` | N/A | Message queuing, routing exchanges, RPC reply queues, management dashboard |
+| **Redis Stack** | Redis Protocol / HTTP | Ports `6379` / `8001` | In-Memory Data Store | Sub-millisecond product caching, cache invalidation, RedisInsight Web GUI dashboard |
 | **User Service** | RabbitMQ (`Transport.RMQ`) | Queue: `user_queue` | `user_service_db` | User identity, Auth (JWT), Profile management, Avatar uploads, User admin, Token validation |
-| **Product Service** | RabbitMQ (`Transport.RMQ`) | Queue: `product_queue` | `product_service_db` | Product catalog, Inventory management, Reviews, Image uploads, Stock adjustment events |
+| **Product Service** | RabbitMQ (`Transport.RMQ`) | Queue: `product_queue` | `product_service_db` / Redis Cache | Product catalog, Inventory management, Reviews, Image uploads, Stock adjustment events, Redis Cache-Aside |
 | **Order Service** | RabbitMQ (`Transport.RMQ`) | Queue: `order_queue` | `order_service_db` | Order placement, Status tracking, User snapshots, Order lifecycle events |
 | **Shared Library** | N/A | N/A | N/A | Common DTOs, Guards, Remote Auth service, RMQ client factory ([`rmq.factory.ts`](file:///c:/Users/Hamza/Desktop/ecommerce-nestjs-backend/shared/microservices/rmq.factory.ts)), Exception filters |
 
@@ -92,15 +100,24 @@ graph TD
 
 ### 3.3. Product Microservice (`product-service`)
 - **Location**: [`/product-service`](file:///c:/Users/Hamza/Desktop/ecommerce-nestjs-backend/product-service)
-- **Role**: Catalog & Inventory Management.
+- **Role**: Catalog & Inventory Management with Redis Caching.
 - **Queue**: `product_queue`
 - **Database**: `product_service_db` (Mongoose Schema: [`Product`](file:///c:/Users/Hamza/Desktop/ecommerce-nestjs-backend/product-service/src/modules/products/schemas/product.schema.ts))
+- **Redis Cache**: [`RedisModule`](file:///c:/Users/Hamza/Desktop/ecommerce-nestjs-backend/product-service/src/redis/redis.module.ts) / [`RedisService`](file:///c:/Users/Hamza/Desktop/ecommerce-nestjs-backend/product-service/src/redis/redis.service.ts)
 - **Core Operations**:
-  - **Catalog Management**: Creation, updating, deleting products (Admin guarded). Uploads up to 5 product images to Cloudinary.
+  - **Catalog Caching & Management**: Creation, updating, deleting products (Admin guarded). Uploads up to 5 product images to Cloudinary.
+  - **Cache-Aside Pattern**:
+    - `getProductDetails(id)`: Checks key `product:{id}` (300s TTL). Returns cache on HIT, queries MongoDB and sets cache on MISS.
+    - `getAllProducts()`: Checks key `products:all` (60s TTL). Returns cache on HIT, queries MongoDB and sets cache on MISS.
+  - **Cache Invalidation Rules**:
+    - Product creation invalidates `products:all`.
+    - Product update/deletion invalidates `product:{id}` and `products:all`.
+    - Review additions/deletions invalidate `product:{id}` and `products:all`.
+    - RabbitMQ stock updates (`ORDER_CREATED` / `ORDER_CANCELLED`) invalidate affected `product:{id}` keys and `products:all`.
   - **Review System**: Add reviews, get product reviews, delete reviews. Automatically calculates average ratings (`ratings`) and number of reviews (`numOfReviews`).
   - **Event Listeners for Inventory Control**:
-    - `@EventPattern(MESSAGE_PATTERNS.orders.created)`: Subscribes to order creation events on `product_queue` to reduce product stock automatically.
-    - `@EventPattern(MESSAGE_PATTERNS.orders.cancelled)`: Subscribes to order cancellation events on `product_queue` to restore product stock automatically.
+    - `@EventPattern(MESSAGE_PATTERNS.orders.created)`: Subscribes to order creation events on `product_queue` to reduce product stock automatically and invalidate product cache.
+    - `@EventPattern(MESSAGE_PATTERNS.orders.cancelled)`: Subscribes to order cancellation events on `product_queue` to restore product stock automatically and invalidate product cache.
 
 ---
 
@@ -163,17 +180,17 @@ graph TD
 
 | HTTP Method | API Path | RabbitMQ Pattern / Event | Destination Queue | Auth Required | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/product/products` | `products.find_all` | `product_queue` | Public | Get all active products |
-| `GET` | `/product/product/:id` | `products.find_one` | `product_queue` | Public | Get product details by ID |
+| `GET` | `/product/products` | `products.find_all` | `product_queue` | Public | Get all active products (Cached in Redis `products:all` TTL 60s) |
+| `GET` | `/product/product/:id` | `products.find_one` | `product_queue` | Public | Get product details by ID (Cached in Redis `product:{id}` TTL 300s) |
 | `GET` | `/product/reviews` | `products.find_reviews` | `product_queue` | Public | Fetch reviews for product |
-| `PUT` | `/product/review` | `products.create_review` | `product_queue` | Bearer Token | Submit product review |
-| `DELETE` | `/product/reviews` | `products.delete_review` | `product_queue` | Bearer Token | Delete a product review |
+| `PUT` | `/product/review` | `products.create_review` | `product_queue` | Bearer Token | Submit product review & invalidate product cache |
+| `DELETE` | `/product/reviews` | `products.delete_review` | `product_queue` | Bearer Token | Delete a product review & invalidate product cache |
 | `GET` | `/product/admin/products` | `products.find_admin` | `product_queue` | Admin Token | Get full product list for admin |
-| `POST` | `/product/admin/products/new` | `products.create` | `product_queue` | Admin Token | Create product with images |
-| `PUT` | `/product/admin/product/:id` | `products.update` | `product_queue` | Admin Token | Update product details/images |
-| `DELETE` | `/product/admin/product/:id` | `products.delete` | `product_queue` | Admin Token | Delete a product |
-| N/A | Inter-service Event | `@EventPattern('ORDER_CREATED')` | `product_queue` | Internal Event | Automatically decrease stock |
-| N/A | Inter-service Event | `@EventPattern('ORDER_CANCELLED')` | `product_queue` | Internal Event | Automatically restore stock |
+| `POST` | `/product/admin/products/new` | `products.create` | `product_queue` | Admin Token | Create product with images & invalidate product cache |
+| `PUT` | `/product/admin/product/:id` | `products.update` | `product_queue` | Admin Token | Update product details/images & invalidate product cache |
+| `DELETE` | `/product/admin/product/:id` | `products.delete` | `product_queue` | Admin Token | Delete a product & invalidate product cache |
+| N/A | Inter-service Event | `@EventPattern('ORDER_CREATED')` | `product_queue` | Internal Event | Automatically decrease stock & invalidate product cache |
+| N/A | Inter-service Event | `@EventPattern('ORDER_CANCELLED')` | `product_queue` | Internal Event | Automatically restore stock & invalidate product cache |
 
 ---
 
@@ -197,6 +214,8 @@ graph TD
 | `NODE_ENV` | All | `production` / `development` | Environment mode |
 | `PORT` | API Gateway | `3000` | HTTP listener port |
 | `RABBITMQ_URL` | All | `amqp://guest:guest@rabbitmq:5672` | RabbitMQ connection URL |
+| `REDIS_HOST` | Product Service | `redis` / `localhost` | Redis server hostname |
+| `REDIS_PORT` | Product Service | `6379` | Redis server port |
 | `USER_SERVICE_QUEUE` | Gateway / User / Product / Order | `user_queue` | Queue for User service |
 | `PRODUCT_SERVICE_QUEUE` | Gateway / Product / Order | `product_queue` | Queue for Product service |
 | `ORDER_SERVICE_QUEUE` | Gateway / Order | `order_queue` | Queue for Order service |
@@ -213,16 +232,17 @@ graph TD
 ## 6. Local Development & Deployment
 
 ### 6.1. Running via Docker Compose (Recommended)
-To launch the entire stack with MongoDB, RabbitMQ message broker, networking, and hot-reloading watch mode:
+To launch the entire stack with MongoDB, RabbitMQ message broker, Redis Stack, networking, and hot-reloading watch mode:
 
 ```bash
 docker compose up --build
 ```
 
-Access the **RabbitMQ Management Dashboard** at `http://localhost:15672` (Username: `guest`, Password: `guest`).
+- **RabbitMQ Management Dashboard**: `http://localhost:15672` (Username: `guest`, Password: `guest`)
+- **RedisInsight Web GUI Dashboard**: `http://localhost:8001` (Visual key/value & TTL inspection)
 
 ### 6.2. Running Microservices Individually
-1. Ensure RabbitMQ is running locally on `amqp://localhost:5672` (or via Docker `docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:3-management`).
+1. Ensure RabbitMQ and Redis are running locally on `amqp://localhost:5672` and `redis://localhost:6379`.
 2. Start services in separate terminals:
 
 ```bash

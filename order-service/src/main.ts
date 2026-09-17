@@ -20,7 +20,7 @@ async function bootstrap() {
     AppModule,
     rmqOptions,
   );
-
+  
   microservice.useGlobalPipes(
     new ValidationPipe({
       transform: true,
